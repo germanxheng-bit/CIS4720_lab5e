@@ -111,9 +111,8 @@ UPDATE students SET gpa = calculate_gpa(student_id);
 -- Expect 85.00, 84.00, 92.33, 82.50 and 0.00.
 -- ======================================================================
 
-SELECT * FROM students;
+  SELECT * FROM students;
 SELECT * FROM student_scores;
-
 
 -- ######################################################################
 -- YOUR LAB 5E WORK STARTS BELOW THIS LINE
@@ -129,33 +128,67 @@ SELECT * FROM student_scores;
 -- STEP 4. Look at the counters the server is keeping
 -- =================================================================
 
--- your comment goes here
--- your statements go here
-
+-- Inspect the current auto-increment counters in the server
+SELECT table_name, auto_increment
+FROM information_schema.tables
+WHERE table_schema = 'cis_students_db'
+  AND auto_increment IS NOT NULL;
 
 -- =================================================================
 -- STEP 5. Create the attendance table, starting its key at 500
 -- =================================================================
 
--- your comment goes here
--- your statements go here
+-- Create the attendance table with a key starting at 500 
+CREATE TABLE attendance (
+    attendance_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    attended_on DATE,
+    status VARCHAR(10),
+    CONSTRAINT fk_attendance_student FOREIGN KEY (student_id) REFERENCES students(student_id)
+) AUTO_INCREMENT = 500;
+
+-- Describe the table to verify settings
+DESCRIBE attendance;
 
 
 -- =================================================================
 -- STEP 6. Add three attendance rows and watch the ids
 -- =================================================================
 
--- your comment goes here
--- your statements go here
+-- Insert three attendance rows and observe the generated IDs (500, 501, 502)
+INSERT INTO attendance (student_id, attended_on, status) VALUES 
+(1, '2026-10-05', 'present'),
+(2, '2026-10-05', 'absent'),
+(3, '2026-10-06', 'present');
+
+-- Select all rows from attendance to verify the IDs
+SELECT * FROM attendance;
 
 
 -- =================================================================
 -- STEP 7. DELETE and TRUNCATE on a scrap table
 -- =================================================================
 
--- your comment goes here
--- your statements go here
+-- Test DELETE vs. TRUNCATE using a throwaway table
+CREATE TABLE scrap (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    label VARCHAR(10)
+);
 
+-- Insert three rows into scrap (counter moves to 4)
+INSERT INTO scrap (label) VALUES ('one'), ('two'), ('three');
+
+-- Check counter after insert (should show 4)
+SELECT table_name, auto_increment FROM information_schema.tables WHERE table_schema = 'cis_students_db' AND table_name = 'scrap';
+
+-- Delete all rows from scrap (counter remains at 4)
+DELETE FROM scrap;
+
+-- Truncate the table (counter resets back to 1)
+TRUNCATE TABLE scrap;
+
+-- Drop the temporary scrap table when finished
+DROP TABLE scrap;
 
 -- =================================================================
 -- STEP 8. A BEFORE INSERT trigger that fills in what you left out
@@ -164,24 +197,53 @@ SELECT * FROM student_scores;
 -- down to END, so select the whole block and run the selection.
 -- =================================================================
 
--- your comment goes here
--- your statements go here
+-- Create a BEFORE INSERT  to auto-fill missing dates and capitalize status
+CREATE TRIGGER trg_attendance_before_insert
+BEFORE INSERT ON attendance
+FOR EACH ROW
+BEGIN
+    -- If no date, default to today's date
+    IF NEW.attended_on IS NULL THEN
+        SET NEW.attended_on = CURDATE();
+    END IF;
+    
+    -- Force uppercase format
+    SET NEW.status = UPPER(NEW.status);
+END;
 
 
 -- =================================================================
 -- STEP 9. An AFTER DELETE trigger, the gap Lab 5d left open
 -- =================================================================
 
--- your comment goes here
--- your statements go here
+-- Create an AFTER DELETE trigger to recalculate GPA when a test score is removed
+CREATE TRIGGER trg_scores_after_delete
+AFTER DELETE ON test_scores
+FOR EACH ROW
+BEGIN
+    -- Recalculate student GPA using OLD values after a score is deleted
+    UPDATE students
+    SET gpa = calculate_gpa(OLD.student_id)
+    WHERE student_id = OLD.student_id;
+END;
 
 
 -- =================================================================
 -- STEP 10. Prove both triggers work
 -- =================================================================
 
--- your comment goes here
--- your statements go here
+-- Insert an attendance row with lowercase status and no date to test the trigger
+INSERT INTO attendance (student_id, status) VALUES (4, 'present');
+SELECT * FROM attendance;
+
+-- Add a test score of 100 for Jenna (student 1), then delete it to test the AFTER DELETE trigger
+INSERT INTO test_scores (student_id, test_name, score) VALUES (1, 'quiz4', 100.00);
+
+-- Delete the quiz4 score row to recalculate GPA
+DELETE FROM test_scores WHERE student_id = 1 AND test_name = 'quiz4';
+
+-- Verify Jenna's GPA returned to its original value
+SELECT * FROM students WHERE student_id = 1;
 
 
 -- =================================================================
